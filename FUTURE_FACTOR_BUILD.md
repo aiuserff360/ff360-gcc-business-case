@@ -35,6 +35,18 @@ Outputs: module summaries (headcount, people, real estate, technology, center op
 
 Every input table has an **Industry average** column beside the input and a **vs avg** chip showing the percentage difference. The averages are editable reference values stored per scenario. On the setup page you can load an indicative set (values taken from the reference GCC business-case material, India/USD, clearly marked indicative) or clear them. Each input page has a "Fill empty inputs from industry average" action that copies averages only into inputs that are still empty.
 
+## Currencies
+
+Industry averages are researched in USD and converted to the case currency at ECB euro reference rates for 24 September 2026 (converted to per-USD; AED at its peg), held in `FX` in `src/model/defaults.js`. Changing the currency on the setup page converts every monetary input and every industry average at that rate, so a case is consistent in any of the 18 currencies. Percentages, months, ratios and areas are never converted.
+
+## Model integrity checks
+
+`src/model/validate.js` runs on the executive summary and in the deck: arithmetic reconciliations (categories vs totals, operating + one-time, cash flow, per-FTE × headcount) plus plausibility checks against India GCC ranges (cost per FTE, people / real estate / technology shares, benefit load, escalation, seat ratio, inputs more than 2× away from their industry average, step completeness).
+
+## Pitch deck
+
+Export → "Pitch deck (PowerPoint)" builds a 13-slide `.pptx` from the live case with `pptxgenjs` (lazy-loaded): title and KPIs, executive summary, the plan, headcount, compensation, other people and center operations, real estate, technology, consolidated results, cash flow, sensitivity and scenarios, industry averages and sources, model checks and next steps. Charts are native PowerPoint charts, so they can be edited in place.
+
 ## Calculation model
 
 `src/model/engine.js` is pure JavaScript. `compute(model)` returns every figure shown. Empty inputs count as zero. The horizon (N years) is read from the settings and every array is sized to it.
