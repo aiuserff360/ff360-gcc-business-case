@@ -3,10 +3,12 @@ import { Panel, Kpi, Tabs, YearHeaders, Insights, Callout } from '../components/
 import { StackedColumns, Donut, Lines, Columns } from '../components/charts.jsx';
 import { BANDS } from '../model/defaults.js';
 import { money, int, pct, signedPct } from '../model/format.js';
+import { validateModel, summarizeChecks } from '../model/validate.js';
+import { Icon } from '../components/icons.jsx';
 
 const TABS = [['summary', 'Executive summary'], ['breakdown', 'Cost breakdown'], ['annual', 'Annual view'], ['perFte', 'Per-FTE view'], ['cashflow', 'Cash flow']];
 
-export function Results({ model, results, page, go, currency }) {
+export function Results({ model, results, page, go, currency, actions }) {
   const View = { summary: Summary, breakdown: Breakdown, annual: Annual, perFte: PerFte, cashflow: CashFlow }[page] || Summary;
   const s = model.settings;
   return (
@@ -14,7 +16,7 @@ export function Results({ model, results, page, go, currency }) {
       <PageHeader icon="chart" eyebrow="Output · Results" title="Business case results" description={`Consolidated ${results.N}-year economics${s.gccName ? ` for ${s.gccName}` : ''}: total cost, category breakdown, per-FTE view and cash flow.`} currency={currency} />
       <Tabs tabs={TABS} value={page || 'summary'} onChange={(k) => go('results', k)} />
       {!results.headcount.entered && <Callout tone="warn" icon="alert" title="The case is empty so far." action={<button type="button" className="btn primary sm" onClick={() => go('headcount', 'plan')}>Go to headcount</button>}>Results are calculated from the input steps. Start with the headcount plan, then compensation and the other cost modules.</Callout>}
-      <View model={model} results={results} go={go} />
+      <View model={model} results={results} go={go} actions={actions} />
     </>
   );
 }
@@ -37,13 +39,19 @@ function buildInsights(results, cur) {
   ];
 }
 
-function Summary({ model, results }) {
+function Summary({ model, results, actions }) {
   const cur = model.settings.currency;
   const t = results.totals; const N = results.N;
   const m = (v) => money(v, cur, { compact: true });
   const s = model.settings;
+  const checks = validateModel(model, results);
+  const cs = summarizeChecks(checks);
   return (
     <>
+      <div className="inline-actions" style={{ marginBottom: 14, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn primary" onClick={actions.exportDeck}><Icon name="layers" size={16} />Download pitch deck (PowerPoint)</button>
+        <button type="button" className="btn" onClick={actions.exportCsv}><Icon name="doc" size={16} />Results CSV</button>
+      </div>
       {(s.companyName || s.plan) && (
         <Panel title={s.gccName || s.companyName || 'Business case'} subtitle={[s.companyName, s.objective, [s.city, s.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}>
           {s.plan && <p style={{ color: 'var(--ink-2)', maxWidth: 900 }}>{s.plan}</p>}
@@ -66,6 +74,16 @@ function Summary({ model, results }) {
       </div>
       {t.fiveYear > 0 && <Panel title="Key insights" subtitle="Generated from the current inputs."><Insights items={buildInsights(results, cur)} /></Panel>}
       <CategoryTable results={results} cur={cur} />
+      <Panel title="Model integrity checks" subtitle={`${cs.pass} passed · ${cs.warn} warnings · ${cs.fail} failures. Arithmetic reconciliations plus plausibility against India GCC market ranges.`} tight>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th style={{ width: 90 }}>Status</th><th>Check</th><th>Detail</th></tr></thead>
+            <tbody>
+              {checks.map((c) => <tr key={c.id}><td><span className={`pill check-${c.status}`}>{c.status}</span></td><td><span className="name">{c.name}</span></td><td className="muted" style={{ fontSize: 12.5 }}>{c.detail}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </>
   );
 }

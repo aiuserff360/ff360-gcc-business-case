@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "pptxgenjs": "^4.0.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

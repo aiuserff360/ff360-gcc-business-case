@@ -25,7 +25,7 @@ export function normalizeModel(stored) {
   });
   // A case with no reference values yet gets the researched industry averages.
   const hasBench = merged.benchmarks && Object.values(merged.benchmarks).some((v) => v !== null && v !== undefined && v !== '');
-  if (!hasBench) merged.benchmarks = defaultBenchmarks();
+  if (!hasBench) merged.benchmarks = defaultBenchmarks(merged.settings.currency, merged);
   return resizeModel(merged);
 }
 

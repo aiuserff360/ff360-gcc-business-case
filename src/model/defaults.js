@@ -5,7 +5,30 @@
 import { BENCHMARK_LIBRARY, libraryValues, librarySources } from './benchmarks.js';
 
 export const DEFAULT_LIBRARY = 'india-usd';
-export const defaultBenchmarks = () => libraryValues(BENCHMARK_LIBRARY[DEFAULT_LIBRARY]);
+const has = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+
+// Exchange rates: ECB euro reference rates for 24 Sep 2026 converted to units per USD (EUR/USD 1.1367); AED is the central-bank peg.
+export const FX = {
+  asOf: '24 September 2026',
+  source: 'European Central Bank euro foreign exchange reference rates, converted to per-USD',
+  url: 'https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html',
+  perUsd: { USD: 1, EUR: 0.8797, GBP: 0.7565, JPY: 158.85, INR: 95.96, CHF: 0.8278, AUD: 1.4232, CAD: 1.4117, SGD: 1.2799, AED: 3.6725, CNY: 6.7126, HKD: 7.8427, SEK: 9.9098, PLN: 3.8553, MXN: 17.584, BRL: 5.1808, PHP: 62.75, MYR: 4.087 },
+};
+export const fxRate = (from, to) => (FX.perUsd[to] || 1) / (FX.perUsd[from] || 1);
+// Convert one amount; small unit rates keep two decimals, everything else rounds to whole units.
+export const convertAmount = (v, from, to) => {
+  if (!has(v) || from === to) return v;
+  const x = Number(v) * fxRate(from, to);
+  return Math.abs(x) < 100 ? Math.round(x * 100) / 100 : Math.round(x);
+};
+
+// Industry averages for a case currency: library values converted from the library currency.
+export function defaultBenchmarks(currency = 'USD', model = null) {
+  const lib = BENCHMARK_LIBRARY[DEFAULT_LIBRARY];
+  const values = libraryValues(lib);
+  const money = benchmarkMoneyKeys(model);
+  return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, money.has(k) ? convertAmount(v, lib.currency, currency) : v]));
+}
 
 export const MIN_HORIZON = 3;
 export const MAX_HORIZON = 10;
@@ -184,7 +207,7 @@ export const CORPORATE_ROWS = [
 
 const nulls = (n) => Array.from({ length: n }, () => null);
 
-export function createDefaultModel(horizon = 5) {
+export function createDefaultModel(horizon = 5, currency = 'USD') {
   const N = horizon;
   return {
     settings: {
@@ -194,7 +217,7 @@ export function createDefaultModel(horizon = 5) {
       plan: '',
       country: '',
       city: '',
-      currency: 'USD',
+      currency,
       startYear: new Date().getFullYear() + 1,
       horizonYears: N,
       attritionPct: null,
@@ -224,7 +247,7 @@ export function createDefaultModel(horizon = 5) {
     technology: Object.fromEntries(TECHNOLOGY_FIELDS.map((f) => [f.key, null])),
     corporate: { mode: 'same', escalation: null, items: CORPORATE_ROWS.map((r) => ({ ...r, base: null, escalation: null, byYear: nulls(N) })) },
     establishment: Object.fromEntries(ESTABLISHMENT_ITEMS.map((it) => [it.key, null])),
-    benchmarks: defaultBenchmarks(),
+    benchmarks: defaultBenchmarks(currency),
   };
 }
 
@@ -243,27 +266,60 @@ export function resizeModel(model) {
 }
 
 // Every (input path, benchmark key) pair, so pages can offer "fill empty inputs from industry average".
-export function benchmarkEntries() {
+export function benchmarkEntries(model = null) {
   const e = [];
+  const benefitType = (i) => model?.compensation?.benefits?.[i]?.type ?? BENEFIT_ROWS[i].type;
   BANDS.forEach((_, i) => {
-    e.push({ path: ['compensation', 'bands', i, 'base'], key: `compensation.bands.${i}.base` });
+    e.push({ path: ['compensation', 'bands', i, 'base'], key: `compensation.bands.${i}.base`, money: true });
     e.push({ path: ['compensation', 'bands', i, 'variablePct'], key: `compensation.bands.${i}.variablePct` });
     e.push({ path: ['compensation', 'bands', i, 'allowancePct'], key: `compensation.bands.${i}.allowancePct` });
   });
   e.push({ path: ['compensation', 'basicPct'], key: 'compensation.basicPct' });
   e.push({ path: ['compensation', 'escalation'], key: 'compensation.escalation' });
-  BENEFIT_ROWS.forEach((b, i) => e.push({ path: ['compensation', 'benefits', i, 'value'], key: `compensation.benefits.${b.id}` }));
-  HIRING_ROWS.forEach((r, i) => { e.push({ path: ['otherPeople', 'hiring', i, 'value'], key: `otherPeople.hiring.${r.id}` }); e.push({ path: ['otherPeople', 'hiring', i, 'eligibility'], key: `otherPeople.hiring.${r.id}.eligibility` }); });
-  OPERATING_ROWS.forEach((r, i) => { e.push({ path: ['otherPeople', 'operating', i, 'value'], key: `otherPeople.operating.${r.id}` }); e.push({ path: ['otherPeople', 'operating', i, 'eligibility'], key: `otherPeople.operating.${r.id}.eligibility` }); });
-  CENTER_PEOPLE_ROWS.forEach((r, i) => e.push({ path: ['otherPeople', 'center', i, 'value'], key: `otherPeople.center.${r.id}` }));
+  BENEFIT_ROWS.forEach((b, i) => e.push({ path: ['compensation', 'benefits', i, 'value'], key: `compensation.benefits.${b.id}`, money: benefitType(i) === 'perEmployee' }));
+  HIRING_ROWS.forEach((r, i) => { e.push({ path: ['otherPeople', 'hiring', i, 'value'], key: `otherPeople.hiring.${r.id}`, money: true }); e.push({ path: ['otherPeople', 'hiring', i, 'eligibility'], key: `otherPeople.hiring.${r.id}.eligibility` }); });
+  OPERATING_ROWS.forEach((r, i) => { e.push({ path: ['otherPeople', 'operating', i, 'value'], key: `otherPeople.operating.${r.id}`, money: true }); e.push({ path: ['otherPeople', 'operating', i, 'eligibility'], key: `otherPeople.operating.${r.id}.eligibility` }); });
+  CENTER_PEOPLE_ROWS.forEach((r, i) => e.push({ path: ['otherPeople', 'center', i, 'value'], key: `otherPeople.center.${r.id}`, money: true }));
   e.push({ path: ['otherPeople', 'escalation'], key: 'otherPeople.escalation' });
-  REAL_ESTATE_TYPES.forEach((t) => t.fields.forEach((f) => e.push({ path: ['realEstate', t.key, f.key], key: `realEstate.${t.key}.${f.key}` })));
-  TECHNOLOGY_FIELDS.forEach((f) => e.push({ path: ['technology', f.key], key: `technology.${f.key}` }));
-  CORPORATE_ROWS.forEach((r, i) => { e.push({ path: ['corporate', 'items', i, 'base'], key: `corporate.${r.id}` }); });
+  REAL_ESTATE_TYPES.forEach((t) => t.fields.forEach((f) => e.push({ path: ['realEstate', t.key, f.key], key: `realEstate.${t.key}.${f.key}`, money: f.prefix === 'currency' })));
+  TECHNOLOGY_FIELDS.forEach((f) => e.push({ path: ['technology', f.key], key: `technology.${f.key}`, money: f.prefix === 'currency' }));
+  CORPORATE_ROWS.forEach((r, i) => { e.push({ path: ['corporate', 'items', i, 'base'], key: `corporate.${r.id}`, money: true }); });
   e.push({ path: ['corporate', 'escalation'], key: 'corporate.escalation' });
-  ESTABLISHMENT_ITEMS.forEach((it) => e.push({ path: ['establishment', it.key], key: `establishment.${it.key}` }));
+  ESTABLISHMENT_ITEMS.forEach((it) => e.push({ path: ['establishment', it.key], key: `establishment.${it.key}`, money: true }));
   e.push({ path: ['settings', 'attritionPct'], key: 'settings.attritionPct' });
   return e;
+}
+
+export const benchmarkMoneyKeys = (model = null) => new Set(benchmarkEntries(model).filter((e) => e.money).map((e) => e.key));
+
+// Every monetary input path in the model (so a currency change converts them all).
+export function monetaryPaths(model) {
+  const p = [];
+  const N = model.headcount.exit.length;
+  model.compensation.bands.forEach((b, i) => { p.push(['compensation', 'bands', i, 'base']); for (let y = 0; y < N; y += 1) p.push(['compensation', 'bands', i, 'baseByYear', y]); });
+  model.compensation.benefits.forEach((b, i) => { if (b.type === 'perEmployee') p.push(['compensation', 'benefits', i, 'value']); });
+  ['hiring', 'operating', 'center'].forEach((sec) => model.otherPeople[sec].forEach((r, i) => { p.push(['otherPeople', sec, i, 'value']); for (let y = 0; y < N; y += 1) p.push(['otherPeople', sec, i, 'byYear', y]); }));
+  model.corporate.items.forEach((it, i) => { p.push(['corporate', 'items', i, 'base']); for (let y = 0; y < N; y += 1) p.push(['corporate', 'items', i, 'byYear', y]); });
+  ESTABLISHMENT_ITEMS.forEach((it) => p.push(['establishment', it.key]));
+  TECHNOLOGY_FIELDS.filter((f) => f.prefix === 'currency').forEach((f) => p.push(['technology', f.key]));
+  REAL_ESTATE_TYPES.forEach((t) => t.fields.filter((f) => f.prefix === 'currency').forEach((f) => p.push(['realEstate', t.key, f.key])));
+  return p;
+}
+
+// Convert every amount (inputs and industry averages) in place from one currency to another. Returns the count converted.
+export function convertModelCurrency(model, from, to) {
+  if (from === to) return 0;
+  let n = 0;
+  monetaryPaths(model).forEach((path) => {
+    let t = model;
+    for (let i = 0; i < path.length - 1; i += 1) t = t[path[i]];
+    const leaf = path[path.length - 1];
+    if (has(t[leaf])) { t[leaf] = convertAmount(t[leaf], from, to); n += 1; }
+  });
+  const money = benchmarkMoneyKeys(model);
+  Object.keys(model.benchmarks || {}).forEach((k) => { if (money.has(k) && has(model.benchmarks[k])) { model.benchmarks[k] = convertAmount(model.benchmarks[k], from, to); n += 1; } });
+  model.settings.currency = to;
+  return n;
 }
 
 export { BENCHMARK_LIBRARY, librarySources, libraryValues };

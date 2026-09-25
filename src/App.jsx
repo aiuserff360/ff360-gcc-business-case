@@ -12,7 +12,7 @@ import { Summaries } from './screens/Summaries.jsx';
 import { Results } from './screens/Results.jsx';
 import { Sensitivity } from './screens/Sensitivity.jsx';
 import { compute } from './model/engine.js';
-import { createDefaultModel, resizeModel, benchmarkEntries } from './model/defaults.js';
+import { createDefaultModel, resizeModel, benchmarkEntries, convertModelCurrency, fxRate, FX } from './model/defaults.js';
 import { loadWorkspace, saveWorkspace, loadSession, saveSession, clearSession, createScenario, exportScenarioJson, exportResultsCsv, readScenarioFile } from './model/storage.js';
 
 const SCREENS = { setup: Setup, headcount: Headcount, people: People, realEstate: RealEstate, technology: Technology, center: CenterOps, summaries: Summaries, results: Results, sensitivity: Sensitivity };
@@ -63,6 +63,12 @@ export default function App() {
   }, []);
 
   const update = useCallback((path, value) => setActiveModel((draft) => {
+    if (path.length === 2 && path[0] === 'settings' && path[1] === 'currency') {
+      const from = draft.settings.currency;
+      const n = convertModelCurrency(draft, from, value);
+      setToast(`Converted ${n} amounts from ${from} to ${value} at 1 ${from} = ${fxRate(from, value).toLocaleString('en-US', { maximumFractionDigits: 4 })} ${value} (ECB, ${FX.asOf})`);
+      return draft;
+    }
     let target = draft;
     for (let i = 0; i < path.length - 1; i += 1) target = target[path[i]];
     target[path[path.length - 1]] = value;
@@ -143,17 +149,28 @@ export default function App() {
     },
     resetScenario: async () => {
       if (!(await ask({ type: 'confirm', title: `Clear all inputs in “${active.name}”?`, message: 'Every input returns to empty. Industry averages you have loaded are kept.', confirmLabel: 'Clear inputs', danger: true }))) return;
-      setActiveModel((draft) => ({ ...createDefaultModel(draft.settings.horizonYears), benchmarks: draft.benchmarks }));
+      setActiveModel((draft) => ({ ...createDefaultModel(draft.settings.horizonYears, draft.settings.currency), benchmarks: draft.benchmarks }));
       setToast('Inputs cleared');
     },
     clearWorkspace: async () => {
       if (!(await ask({ type: 'confirm', title: 'Remove every scenario?', message: 'All scenarios saved in this browser are removed and a fresh, empty base case is created.', confirmLabel: 'Remove all', danger: true }))) return;
-      const base = createScenario('Base case', createDefaultModel(), { locked: true });
+      const base = createScenario('Base case', createDefaultModel(5, model.settings.currency), { locked: true });
       setWorkspace({ scenarios: [base], activeId: base.id });
       setDirty(false);
       go('setup');
     },
     exportJson: () => exportScenarioJson(active),
+    exportDeck: async () => {
+      setToast('Building the pitch deck…');
+      try {
+        const { buildDeck } = await import('./model/deck.js');
+        await buildDeck({ model, results, workspace });
+        setToast('Pitch deck downloaded');
+      } catch (e) {
+        console.error(e);
+        setToast('Could not build the deck in this browser');
+      }
+    },
     exportCsv: () => exportResultsCsv(active, results),
     importJson: async (file) => {
       try {

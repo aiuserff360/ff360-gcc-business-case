@@ -97,6 +97,7 @@ export function TopBar({ model, workspace, dirty, actions, user, results }) {
         <button type="button" className="btn hide-sm" onClick={() => actions.go('sensitivity', 'scenarios')}><Icon name="compare" size={16} />Compare</button>
         <Menu trigger={(toggle) => <button type="button" className="btn hide-sm" onClick={toggle}><Icon name="export" size={16} />Export</button>}>
           <div className="menu-label">Export “{active?.name}”</div>
+          <button type="button" onClick={actions.exportDeck}><Icon name="layers" size={16} />Pitch deck (PowerPoint)</button>
           <button type="button" onClick={actions.exportCsv}><Icon name="doc" size={16} />Results as CSV</button>
           <button type="button" onClick={actions.exportJson}><Icon name="doc" size={16} />Assumptions as JSON</button>
           <button type="button" onClick={() => window.print()}><Icon name="print" size={16} />Print / save as PDF</button>
@@ -110,6 +111,7 @@ export function TopBar({ model, workspace, dirty, actions, user, results }) {
           <button type="button" className="danger" onClick={() => actions.deleteScenario()} disabled={workspace.scenarios.length < 2}><Icon name="trash" size={16} />Delete scenario</button>
           <hr />
           <button type="button" onClick={() => fileRef.current?.click()}><Icon name="import" size={16} />Import assumptions (JSON)</button>
+          <button type="button" onClick={actions.exportDeck}><Icon name="layers" size={16} />Export pitch deck (PowerPoint)</button>
           <button type="button" onClick={actions.exportCsv}><Icon name="doc" size={16} />Export results as CSV</button>
           <button type="button" onClick={actions.exportJson}><Icon name="doc" size={16} />Export assumptions as JSON</button>
           <hr />
